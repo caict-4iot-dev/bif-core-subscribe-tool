@@ -44,7 +44,7 @@ public class chain_test {
     /**
      * 订阅服务
      */
-    String webSocketUrl = "ws://172.19.6.22:810";
+    String webSocketUrl = "ws://test-bif-core.xinghuo.space:7301";
     boolean isConnected = false;
     /**
      * 订阅账号
@@ -111,7 +111,6 @@ public class chain_test {
     private void OnChainHello(byte[] msg, int length) {
         try {
             Overlay.ChainStatus chain_status = Overlay.ChainStatus.parseFrom(msg);
-            System.out.println("ddddsdadadad "+chain_status);
             isConnected = true;
         } catch (Exception e) {
             System.out.println(e.getMessage());
