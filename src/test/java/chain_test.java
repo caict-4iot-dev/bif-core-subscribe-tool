@@ -44,7 +44,7 @@ public class chain_test {
     /**
      * 订阅服务
      */
-    String webSocketUrl = "ws://test-bif-core.xinghuo.space:7301";
+    String webSocketUrl = "ws://test-bif-core.xinghuo.space:7053";
     boolean isConnected = false;
     /**
      * 订阅账号
