@@ -104,13 +104,14 @@ public class chain_test {
         //订阅指定账号交易信息
         Overlay.ChainSubscribeTx.Builder tx=Overlay.ChainSubscribeTx.newBuilder();
         tx.addAddress(srcAddress);
-        if (!chain_message_one_.Send(Overlay.ChainMessageType.CHAIN_SUBSCRIBE_TX.getNumber(), tx.build().toByteArray())) {
+        if (!chain_message_one_.SendTxSubscribe(Overlay.ChainMessageType.CHAIN_SUBSCRIBE_TX.getNumber(), tx)) {
             System.out.println("send tx failed");
         }
     }
     private void OnChainHello(byte[] msg, int length) {
         try {
             Overlay.ChainStatus chain_status = Overlay.ChainStatus.parseFrom(msg);
+            System.out.println(chain_status);
             isConnected = true;
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -121,7 +122,8 @@ public class chain_test {
     private void OnChainTxEnvStore(byte[] msg, int length) {
         try {
             Chain.TransactionEnvStore  envStore = Chain.TransactionEnvStore.parseFrom(msg);
-            System.out.println("OnChainTxEnvStore hash:" + ToHex.bytesToHex(envStore.getHash().toByteArray()));
+            String hash = ToHex.bytesToHex(envStore.getHash().toByteArray());
+            System.out.println("OnChainTxEnvStore hash:" + hash);
             if (envStore.getErrorCode() == 0) {
                 System.out.println(sdk.getUrl());
                 BIFTransactionGetInfoRequest request = new BIFTransactionGetInfoRequest();
@@ -141,7 +143,8 @@ public class chain_test {
     private void OnChainLedgerTxs(byte[] msg, int length) {
         try {
             Overlay.LedgerTxs envStore = Overlay.LedgerTxs.parseFrom(msg);
-            System.out.println("header size:" + envStore.getLedgerLength());
+            Long ledgerLength = envStore.getHeader().getSeq();
+            System.out.println("header size:" + ledgerLength);
         } catch (Exception e) {
             e.printStackTrace();
         }

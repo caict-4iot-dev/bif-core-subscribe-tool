@@ -27,10 +27,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import cn.caict.bifchain.proto.Common.*;
 import cn.caict.bifchain.proto.Overlay;
 import org.java_websocket.WebSocket;
-import org.java_websocket.WebSocketImpl;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
-import org.java_websocket.drafts.Draft_17;
+import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.handshake.ServerHandshake;
 
 import com.google.protobuf.ByteString;
@@ -43,6 +42,8 @@ public class BlockChainAdapter {
     private BlockChainAdapterProc response_handler_[] = new BlockChainAdapterProc[256];
     private final long check_interval = 5000;
     private final int OVERLAY_PING = 1;
+    private Overlay.ChainSubscribeTx.Builder subscribeTx;
+    private boolean is_send = false;
 
     private class BlockChainManager implements Runnable {
         private SendMessageThread send_message_thread_;
@@ -58,7 +59,7 @@ public class BlockChainAdapter {
         private URI uri_;
         public BlockChainManager(Integer index, String uri_address) {
             index_ = index;
-            draft_ = new Draft_17();
+            draft_ = new Draft_6455();
             uri_ = URI.create(uri_address);
             send_queue_ = new LinkedBlockingQueue<WsMessage>();
             blockchain_manager_thhead = new Thread(this);
@@ -128,7 +129,7 @@ public class BlockChainAdapter {
         private class BlockChain extends WebSocketClient {
             public BlockChain(Draft d, URI uri) {
                 super(uri, d);
-                WebSocketImpl.DEBUG = false;
+                //WebSocketImpl.DEBUG = false;
 
                 AddChainMethod(OVERLAY_PING, new BlockChainAdapterProc() {
                     @Override
@@ -157,6 +158,7 @@ public class BlockChainAdapter {
 
             @Override
             public void onClose( int code, String reason, boolean remote ) {
+                is_send = false;
                 System.out.println( "Closed: " + index_ + ", code:" + code + ", reason:" + reason);
             }
 
@@ -216,11 +218,11 @@ public class BlockChainAdapter {
 
                     SendMessage(blockchain_managers_.get(index_), Overlay.OVERLAY_MESSAGE_TYPE.OVERLAY_MSGTYPE_PING_VALUE, false,
                             sequence_, pong.build().toByteArray());
-                    System.out.println("Response pong to " + conn.getRemoteSocketAddress().getHostString()
-                            + ":" + conn.getRemoteSocketAddress().getPort());
+                    System.out.println("Response pong to " + block_chain_.getURI().getHost()
+                            + ":" + block_chain_.getURI().getPort());
                 } catch (InvalidProtocolBufferException e) {
-                    System.out.println("OnRequestPing: parse ping data failed" + " (" + conn.getRemoteSocketAddress().getHostString()
-                            + ":" + conn.getRemoteSocketAddress().getPort() + ")");
+                    System.out.println("OnRequestPing: parse ping data failed" + " (" + block_chain_.getURI().getHost()
+                            + ":" + block_chain_.getURI().getPort() + ")");
                 }
             }
 
@@ -229,11 +231,11 @@ public class BlockChainAdapter {
                 try {
                     Pong.parseFrom(msg);
                     heartbeat_time_ = System.currentTimeMillis();
-                    System.out.println("OnRequestPing: Recv pong from " + conn.getRemoteSocketAddress().getHostString()
-                            + ":" + conn.getRemoteSocketAddress().getPort());
+                    System.out.println("OnRequestPing: Recv pong from " + block_chain_.getURI().getHost()
+                            + ":" + block_chain_.getURI().getPort());
                 } catch (InvalidProtocolBufferException e) {
-                    System.out.println("OnResponsePing: parse pong data failed" + " (" + conn.getRemoteSocketAddress().getHostString()
-                            + ":" + conn.getRemoteSocketAddress().getPort() + ")");
+                    System.out.println("OnResponsePing: parse pong data failed" + " (" + block_chain_.getURI().getHost()
+                            + ":" + block_chain_.getURI().getPort() + ")");
                 }
             }
         }
@@ -264,8 +266,15 @@ public class BlockChainAdapter {
                         ping.setNonce(System.currentTimeMillis() * 1000);
                         SendMessage(blockchain_managers_.get(index_), Overlay.OVERLAY_MESSAGE_TYPE.OVERLAY_MSGTYPE_PING_VALUE,
                                 true, sequence_++, ping.build().toByteArray());
-                        System.out.println("OnRequestPing: Send ping to " + conn.getRemoteSocketAddress().getHostString()
-                                + ":" + conn.getRemoteSocketAddress().getPort());
+                        System.out.println("OnRequestPing: Send ping to " + block_chain_.getURI().getHost()
+                                + ":" + block_chain_.getURI().getPort());
+                        if(!is_send && !(subscribeTx == null) && subscribeTx.getAddressList().size()>0){
+                            Overlay.ChainHello.Builder chain_hello = Overlay.ChainHello.newBuilder();
+                            chain_hello.setTimestamp(System.currentTimeMillis());
+                            Send(Overlay.ChainMessageType.CHAIN_HELLO.getNumber(), chain_hello.build().toByteArray());
+                            Boolean result = SendTxSubscribe(Overlay.ChainMessageType.CHAIN_SUBSCRIBE_TX.getNumber(),subscribeTx);
+                            System.out.println("subscribeTx: Send subscribeTx " + result);
+                        }
                     }
                 }
             }
@@ -422,5 +431,36 @@ public class BlockChainAdapter {
             wsMessage.setData(ByteString.copyFrom(data));
         }
         return blockchain_manager.send_queue_.add(wsMessage.build());
+    }
+
+    // send message
+    public boolean SendTxSubscribe(int type, Overlay.ChainSubscribeTx.Builder tx) {
+        boolean bret = false;
+        do {
+            try {
+                if (!IsConnected()) {
+                    System.out.println("Disconnected");
+                    bret = false;
+                    break;
+                }
+
+                for(int i = 0; i < blockchain_managers_.size(); i++) {
+                    BlockChainManager blockchain_manager = blockchain_managers_.get(i);
+                    if (blockchain_manager.IsConnected()) {
+                        if (!SendMessage(blockchain_manager, type, true, blockchain_manager.sequence_, tx.build().toByteArray())) {
+                            System.out.println("Add send queue failed");
+                        }
+                    }
+                }
+                is_send = true;
+                subscribeTx = tx;
+                bret =  true;
+            } catch(Exception e) {
+                System.out.println("Add message failed, " + e.getMessage());
+            }
+        } while (false);
+
+
+        return bret;
     }
 }
